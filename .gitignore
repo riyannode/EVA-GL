@@ -1,0 +1,16 @@
+node_modules/
+.env
+.env.*
+!.env.example
+.local-tests/
+.tmp/
+playwright-report/
+test-results/
+*.har
+*.trace.zip
+.pytest_cache/
+artifacts/
+frontend/dist/
+__pycache__/
+*.pyc
+.DS_Store

@@ -1,0 +1,31 @@
+{
+  "name": "eva-gl",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run dev:backend",
+    "dev:backend": "bun --watch backend/src/index.ts",
+    "dev:frontend": "vite --host 0.0.0.0",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@langchain/core": "^1.2.10",
+    "@langchain/langgraph": "^1.4.14",
+    "genlayer-js": "^1.1.8",
+    "hono": "^4.13.7",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "zod": "^4.6.1"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "@vitejs/plugin-react": "latest",
+    "typescript": "latest",
+    "vite": "^8.2.2"
+  }
+}
