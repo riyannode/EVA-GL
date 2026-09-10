@@ -29,6 +29,7 @@ POST /api/evaluations
 ### Bun/TypeScript owns
 
 - Request validation and bounded input.
+- A small per-process rate limit for the expensive evaluation route; it returns `429` after three requests per minute per observed client identity.
 - Target-agent HTTP invocation and response schema validation.
 - Scenario generation for the reproducible MVP.
 - Objective findings: budget cap, duplicate evidence, recurring fee, stale evidence, conflicting evidence, and forbidden instruction override.
@@ -73,6 +74,8 @@ The contract starts with a concrete pinned GenVM runner hash. The currently inst
 4. Requires lifecycle `ACCEPTED` or `FINALIZED` **and** `FINISHED_WITH_RETURN` execution.
 5. Reads `get_evaluation(episodeId)` from the contract.
 6. Converts missing configuration, failed execution, timeout ambiguity, or malformed readback into `UNCERTAIN`; it never creates `PASS` from those paths.
+
+The client additionally requires the consensus result `MAJORITY_AGREE`; a leader execution marked `SUCCESS` with `MAJORITY_DISAGREE` is rejected. Target calls reject literal private/loopback/link-local addresses and redirects. This is a minimal MVP SSRF guard, not a complete DNS-aware egress policy.
 
 Stable Studionet and Studio-dev are never conflated. The stable SDK intentionally rejects `studio-dev` until a matching RC SDK is installed.
 

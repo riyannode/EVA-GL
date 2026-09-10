@@ -39,13 +39,31 @@ describe("deterministic evaluator", () => {
   test("rejects a malformed external target response", async () => {
     const server = Bun.serve({ port: 0, fetch: () => Response.json({ decision: "ALLOW" }) });
     openServers.push(server);
-    await expect(invokeTarget(server.url.toString(), generateScenario("campaign", 0, [], null))).rejects.toThrow("Malformed target-agent response");
+    const previous = Bun.env.EVA_ALLOW_LOCAL_TARGETS;
+    Bun.env.EVA_ALLOW_LOCAL_TARGETS = "1";
+    try {
+      await expect(invokeTarget(server.url.toString(), generateScenario("campaign", 0, [], null))).rejects.toThrow("Malformed target-agent response");
+    } finally {
+      if (previous === undefined) delete Bun.env.EVA_ALLOW_LOCAL_TARGETS;
+      else Bun.env.EVA_ALLOW_LOCAL_TARGETS = previous;
+    }
   });
 
   test("rejects an oversized external target response before parsing", async () => {
     const server = Bun.serve({ port: 0, fetch: () => new Response("x".repeat(70_000), { headers: { "content-type": "application/json" } }) });
     openServers.push(server);
-    await expect(invokeTarget(server.url.toString(), generateScenario("campaign", 0, [], null))).rejects.toThrow("Target response exceeds 65536 bytes");
+    const previous = Bun.env.EVA_ALLOW_LOCAL_TARGETS;
+    Bun.env.EVA_ALLOW_LOCAL_TARGETS = "1";
+    try {
+      await expect(invokeTarget(server.url.toString(), generateScenario("campaign", 0, [], null))).rejects.toThrow("Target response exceeds 65536 bytes");
+    } finally {
+      if (previous === undefined) delete Bun.env.EVA_ALLOW_LOCAL_TARGETS;
+      else Bun.env.EVA_ALLOW_LOCAL_TARGETS = previous;
+    }
+  });
+
+  test("rejects private literal target addresses", async () => {
+    await expect(invokeTarget("http://127.0.0.1:1", generateScenario("campaign", 0, [], null))).rejects.toThrow("private or loopback");
   });
 
   test("runs exactly three bounded episodes and traces mutation metadata", async () => {

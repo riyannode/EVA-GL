@@ -33,12 +33,37 @@ export const campaigns = new Map<string, StoredCampaign>();
 export const app = new Hono();
 app.use("*", cors());
 
+const evaluationRequests = new Map<string, number[]>();
+const RATE_WINDOW_MS = 60_000;
+const MAX_EVALUATIONS_PER_WINDOW = 3;
+
+type HeaderRequest = { req: { header(name: string): string | undefined } };
+function requestIdentity(c: HeaderRequest): string {
+  return c.req.header("cf-connecting-ip") ?? c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+}
+
+function rateLimited(identity: string): boolean {
+  const now = Date.now();
+  const recent = (evaluationRequests.get(identity) ?? []).filter((timestamp) => now - timestamp < RATE_WINDOW_MS);
+  if (recent.length >= MAX_EVALUATIONS_PER_WINDOW) {
+    evaluationRequests.set(identity, recent);
+    return true;
+  }
+  recent.push(now);
+  evaluationRequests.set(identity, recent);
+  return false;
+}
+
 app.get("/health", (c) => {
   const health = genLayerHealth();
   return c.json({ ok: true, ...health });
 });
 
 app.post("/api/evaluations", async (c) => {
+  if (rateLimited(requestIdentity(c))) {
+    c.header("Retry-After", "60");
+    return c.json({ error: "Evaluation rate limit exceeded; retry in 60 seconds" }, 429);
+  }
   let input: z.infer<typeof EvaluationRequestSchema>;
   try {
     input = EvaluationRequestSchema.parse(await c.req.json());

@@ -97,6 +97,6 @@ The response is synchronous for the MVP. It contains `episodes`, `weaknesses`, a
 
 - Campaign data is in-memory and disappears on restart.
 - The MVP scenario generator is deterministic rather than provider-backed LLM generation so the demo is reproducible.
-- External target URLs are limited to HTTP(S), timeout, response size, and schema checks; production SSRF policy and authentication are outside this hackathon MVP.
+- Literal private/loopback target addresses are rejected by default; set `EVA_ALLOW_LOCAL_TARGETS=1` only for an explicitly local test target. Production deployments still need DNS-aware egress controls and authentication.
 - Full hosted consensus requires a funded/configured account or network-specific gasless account behavior and can take minutes.
 - No claim of production certification is made from this demo.

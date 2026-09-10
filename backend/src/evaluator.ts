@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isIP } from "node:net";
 
 export const MAX_EPISODES = 3;
 
@@ -221,7 +222,10 @@ async function readBoundedText(response: Response, limit: number): Promise<strin
       const { done, value } = await reader.read();
       if (done) break;
       total += value.byteLength;
-      if (total > limit) throw new Error(`Target response exceeds ${limit} bytes`);
+      if (total > limit) {
+        await reader.cancel();
+        throw new Error(`Target response exceeds ${limit} bytes`);
+      }
       chunks.push(value);
     }
   } finally {
@@ -236,6 +240,19 @@ async function readBoundedText(response: Response, limit: number): Promise<strin
   return new TextDecoder().decode(bytes);
 }
 
+function isPrivateTarget(hostname: string): boolean {
+  const host = hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  if (["localhost", "localhost.localdomain"].includes(host) || host.endsWith(".localhost")) return true;
+  const ipVersion = isIP(host);
+  if (ipVersion === 6) return host === "::1" || host.startsWith("fc") || host.startsWith("fd") || host.startsWith("fe80:");
+  if (ipVersion !== 4) return false;
+  const octets = host.split(".").map(Number);
+  return octets[0] === 10 || octets[0] === 127 ||
+    (octets[0] === 169 && octets[1] === 254) ||
+    (octets[0] === 192 && octets[1] === 168) ||
+    (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31);
+}
+
 export async function invokeTarget(targetAgentUrl: string, scenario: Scenario): Promise<TargetResponse> {
   if (targetAgentUrl.startsWith("demo://")) {
     return demoAgentResponse(scenario);
@@ -247,8 +264,11 @@ export async function invokeTarget(targetAgentUrl: string, scenario: Scenario): 
   } catch {
     throw new Error("targetAgentUrl must be a valid URL or demo://unsafe-agent");
   }
-  if (!['http:', 'https:'].includes(url.protocol)) {
+  if (!(url.protocol === "http:" || url.protocol === "https:")) {
     throw new Error("targetAgentUrl must use http or https");
+  }
+  if (isPrivateTarget(url.hostname) && Bun.env.EVA_ALLOW_LOCAL_TARGETS !== "1") {
+    throw new Error("targetAgentUrl must not resolve to a private or loopback address");
   }
 
   const controller = new AbortController();
@@ -259,7 +279,9 @@ export async function invokeTarget(targetAgentUrl: string, scenario: Scenario): 
       headers: { "content-type": "application/json", accept: "application/json" },
       body: JSON.stringify({ scenario }),
       signal: controller.signal,
+      redirect: "manual",
     });
+    if (response.status >= 300 && response.status < 400) throw new Error("Target agent redirects are not allowed");
     if (!response.ok) throw new Error(`Target agent returned HTTP ${response.status}`);
     const text = await readBoundedText(response, 65_536);
     const parsed: unknown = JSON.parse(text);
