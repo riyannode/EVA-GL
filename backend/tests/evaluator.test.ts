@@ -66,6 +66,17 @@ describe("deterministic evaluator", () => {
     await expect(invokeTarget("http://127.0.0.1:1", generateScenario("campaign", 0, [], null))).rejects.toThrow("private or loopback");
   });
 
+  test("enforces the three-episode maximum at the graph boundary", async () => {
+    await expect(runCampaign(
+      { campaignId: "campaign", targetAgentUrl: "demo://unsafe-agent", mandate, authorityProfile: "financial", maxEpisodes: 4 },
+      { judge: async () => ({ judgment: { verdict: "PASS", severity: "NONE", mandateAlignment: 100, evidenceSufficiency: 100, materialWeakness: false, weaknessCategory: "no_material_weakness", reason: "Safe." }, evidence: { txHash: null, status: "TEST_ONLY", contractAddress: null } }) },
+    )).rejects.toThrow("maxEpisodes must be an integer between 1 and 3");
+  });
+
+  test("generates the required mandate ambiguity scenario for non-financial authority", () => {
+    expect(generateScenario("campaign", 0, [], null, "operations").kind).toBe("mandate_ambiguity");
+  });
+
   test("runs exactly three bounded episodes and traces mutation metadata", async () => {
     const result = await runCampaign(
       { campaignId: "campaign", targetAgentUrl: "demo://unsafe-agent", mandate, authorityProfile: "financial", maxEpisodes: 3 },

@@ -29,6 +29,9 @@ type StoredCampaign = {
   error?: string;
 };
 
+const MAX_REQUEST_BYTES = 16_384;
+const MAX_CAMPAIGNS = 100;
+
 export const campaigns = new Map<string, StoredCampaign>();
 export const app = new Hono();
 app.use("*", cors());
@@ -54,6 +57,22 @@ function rateLimited(identity: string): boolean {
   return false;
 }
 
+function rememberCampaign(campaignId: string, campaign: StoredCampaign): void {
+  if (!campaigns.has(campaignId) && campaigns.size >= MAX_CAMPAIGNS) {
+    const oldest = campaigns.keys().next().value;
+    if (oldest) campaigns.delete(oldest);
+  }
+  campaigns.set(campaignId, campaign);
+}
+
+async function readBoundedJson(c: { req: { header(name: string): string | undefined; text(): Promise<string> } }): Promise<unknown> {
+  const contentLength = c.req.header("content-length");
+  if (contentLength && Number(contentLength) > MAX_REQUEST_BYTES) throw new Error("Request body exceeds 16384 bytes");
+  const text = await c.req.text();
+  if (new TextEncoder().encode(text).byteLength > MAX_REQUEST_BYTES) throw new Error("Request body exceeds 16384 bytes");
+  return JSON.parse(text);
+}
+
 app.get("/health", (c) => {
   const health = genLayerHealth();
   return c.json({ ok: true, ...health });
@@ -66,13 +85,13 @@ app.post("/api/evaluations", async (c) => {
   }
   let input: z.infer<typeof EvaluationRequestSchema>;
   try {
-    input = EvaluationRequestSchema.parse(await c.req.json());
+    input = EvaluationRequestSchema.parse(await readBoundedJson(c));
   } catch (error) {
     return c.json({ error: error instanceof z.ZodError ? error.issues : "Invalid JSON request" }, 400);
   }
 
   const campaignId = crypto.randomUUID();
-  campaigns.set(campaignId, { status: "RUNNING", stage: "Starting evaluation" });
+  rememberCampaign(campaignId, { status: "RUNNING", stage: "Starting evaluation" });
   try {
     const result = await runCampaign(
       {
@@ -84,14 +103,14 @@ app.post("/api/evaluations", async (c) => {
       },
       {
         judge: createGenLayerJudge(),
-        onStage: (stage) => campaigns.set(campaignId, { status: "RUNNING", stage }),
+        onStage: (stage) => rememberCampaign(campaignId, { status: "RUNNING", stage }),
       },
     );
-    campaigns.set(campaignId, { status: result.status, stage: "Complete", result });
+    rememberCampaign(campaignId, { status: result.status, stage: "Complete", result });
     return c.json(result, 200);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Evaluation failed";
-    campaigns.set(campaignId, { status: "FAILED", stage: "Failed", error: message });
+    rememberCampaign(campaignId, { status: "FAILED", stage: "Failed", error: message });
     return c.json({ campaignId, status: "FAILED", error: message }, 502);
   }
 });

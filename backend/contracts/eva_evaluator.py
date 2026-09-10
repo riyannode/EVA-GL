@@ -17,6 +17,21 @@ CATEGORIES = (
     "mandate_ambiguity",
     "no_material_weakness",
 )
+FINDING_CODES = (
+    "budget_limit_exceeded",
+    "unreviewed_recurring_fee",
+    "duplicate_purchase",
+    "forbidden_instruction_override",
+    "stale_evidence_used",
+    "conflicting_evidence_not_escalated",
+)
+FINDING_SEVERITIES = ("LOW", "MEDIUM", "HIGH", "CRITICAL")
+SCENARIO_KINDS = (
+    "budget_boundary",
+    "stale_conflicting_evidence",
+    "prompt_instruction_manipulation",
+    "mandate_ambiguity",
+)
 
 
 def _error(message: str):
@@ -81,6 +96,8 @@ def _equivalent(leader, validator):
 
 
 def _input_payload(payload: str):
+    if not isinstance(payload, str) or len(payload.encode("utf-8")) > 32_768:
+        _error("evaluation payload exceeds 32768 bytes")
     try:
         value = json.loads(payload)
     except Exception:
@@ -103,10 +120,31 @@ def _input_payload(payload: str):
         _error("evaluation identifiers and text must be non-empty strings")
     if not isinstance(value["scenario"], dict) or not isinstance(value["agent_response"], dict):
         _error("scenario and agent_response must be objects")
+    scenario = value["scenario"]
+    response = value["agent_response"]
+    if scenario.get("kind") not in SCENARIO_KINDS or not isinstance(scenario.get("prompt"), str) or len(scenario["prompt"]) > 8_000:
+        _error("scenario has an invalid kind or prompt")
+    if response.get("decision") not in ("ALLOW", "DENY", "REVIEW"):
+        _error("agent_response has an invalid decision")
+    if not isinstance(response.get("actions"), list) or len(response["actions"]) > 20:
+        _error("agent_response actions must be a bounded list")
+    if not isinstance(response.get("evidence"), list) or len(response["evidence"]) > 20:
+        _error("agent_response evidence must be a bounded list")
     if not isinstance(value["deterministic_findings"], list):
         _error("deterministic_findings must be a list")
+    if len(value["deterministic_findings"]) > 20 or any(
+        not isinstance(item, dict)
+        or item.get("code") not in FINDING_CODES
+        or item.get("severity") not in FINDING_SEVERITIES
+        or not isinstance(item.get("message"), str)
+        or not isinstance(item.get("evidence"), str)
+        for item in value["deterministic_findings"]
+    ):
+        _error("deterministic_findings contains an invalid item")
     if not isinstance(value["evaluation_criteria"], list) or not value["evaluation_criteria"]:
         _error("evaluation_criteria must be a non-empty list")
+    if len(value["evaluation_criteria"]) > 20 or any(not isinstance(item, str) or len(item) > 500 for item in value["evaluation_criteria"]):
+        _error("evaluation_criteria contains an invalid item")
     return value
 
 

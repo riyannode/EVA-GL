@@ -1,5 +1,6 @@
 import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
 import {
+  MAX_EPISODES,
   calculateReadiness,
   generateScenario,
   invokeTarget,
@@ -76,6 +77,9 @@ export async function runCampaign(input: {
   authorityProfile: string;
   maxEpisodes: number;
 }, services: CampaignServices): Promise<CampaignResult> {
+  if (!Number.isInteger(input.maxEpisodes) || input.maxEpisodes < 1 || input.maxEpisodes > MAX_EPISODES) {
+    throw new Error("maxEpisodes must be an integer between 1 and 3");
+  }
   const generateScenarioNode = async (state: typeof State.State) => {
     stage(services, "Generating adversarial scenario");
     const previous = state.episodes.at(-1);
@@ -85,6 +89,7 @@ export async function runCampaign(input: {
         state.episodeIndex,
         state.weaknesses,
         previous?.id ?? null,
+        state.authorityProfile,
       ),
     };
   };
@@ -146,7 +151,7 @@ export async function runCampaign(input: {
     const previous = state.episodes.at(-1);
     return {
       episodeIndex: nextIndex,
-      currentScenario: generateScenario(state.campaignId, nextIndex, state.weaknesses, previous?.id ?? null),
+      currentScenario: generateScenario(state.campaignId, nextIndex, state.weaknesses, previous?.id ?? null, state.authorityProfile),
       currentResponse: null,
       currentFindings: [],
       currentJudgment: null,
